@@ -3,7 +3,7 @@ use axum::routing::IntoMakeService;
 use axum::Router;
 use hyper::server::conn::AddrIncoming;
 use hyper::Server;
-use sqlx::{PgPool, Pool, Postgres};
+use sqlx::PgPool;
 use std::net::TcpListener;
 
 pub fn run(

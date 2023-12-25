@@ -11,7 +11,7 @@ pub struct FormData {
     name: String,
 }
 
-pub async fn subscribe(Extension(db): Extension<PgPool>, Form(form): Form<FormData>) -> Response {
+pub async fn subscribe(Extension(db_pool): Extension<PgPool>, Form(form): Form<FormData>) -> Response {
     match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
@@ -22,7 +22,7 @@ pub async fn subscribe(Extension(db): Extension<PgPool>, Form(form): Form<FormDa
         form.name,
         Utc::now()
     )
-    .execute(&db)
+    .execute(&db_pool)
     .await
     {
         Ok(_) => StatusCode::OK.into_response(),

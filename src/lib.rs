@@ -8,9 +8,9 @@ use axum::routing::post;
 use axum::{routing::get, Extension, Router};
 use sqlx::PgPool;
 
-fn create_routes(pool: PgPool) -> Router {
+fn create_routes(db_pool: PgPool) -> Router {
     Router::new()
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscriptions::subscribe))
-        .layer(Extension(pool))
+        .layer(Extension(db_pool))
 }

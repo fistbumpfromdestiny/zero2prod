@@ -11,7 +11,19 @@ pub struct FormData {
     name: String,
 }
 
-pub async fn subscribe(Extension(db_pool): Extension<PgPool>, Form(form): Form<FormData>) -> Response {
+pub async fn subscribe(
+    Extension(db_pool): Extension<PgPool>,
+    Form(form): Form<FormData>,
+) -> Response {
+    let request_id = Uuid::new_v4();
+    let request_span = tracing::info_span!(
+        "Adding a new subscriber.",
+        %request_id,
+        subscriber_email = %form.email,
+        subscriber_name = %form.email
+    );
+    let _request_span_guard = request_span.enter();
+
     match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
@@ -25,7 +37,20 @@ pub async fn subscribe(Extension(db_pool): Extension<PgPool>, Form(form): Form<F
     .execute(&db_pool)
     .await
     {
-        Ok(_) => StatusCode::OK.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(_) => {
+            tracing::info!(
+                "request_id {} - Successfully inserted subscription into database.",
+                request_id
+            );
+            StatusCode::OK.into_response()
+        }
+        Err(e) => {
+            tracing::error!(
+                "request_id {} - Failed to execute query {:?}",
+                request_id,
+                e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }

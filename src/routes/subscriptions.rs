@@ -1,8 +1,10 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{extract::Form, Extension};
-use sqlx::types::chrono::Utc;
-use sqlx::PgPool;
+use diesel::{
+    r2d2::{ConnectionManager, Pool},
+    PgConnection,
+};
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -12,7 +14,7 @@ pub struct FormData {
 }
 
 pub async fn subscribe(
-    Extension(db_pool): Extension<PgPool>,
+    Extension(db_pool): Extension<Pool<ConnectionManager<PgConnection>>>,
     Form(form): Form<FormData>,
 ) -> Response {
     let request_id = Uuid::new_v4();
@@ -23,34 +25,6 @@ pub async fn subscribe(
         subscriber_name = %form.email
     );
     let _request_span_guard = request_span.enter();
-
-    match sqlx::query!(
-        r#"
-        INSERT INTO subscriptions (id, email, name, subscribed_at)
-        VALUES ($1, $2, $3, $4)
-        "#,
-        Uuid::new_v4(),
-        form.email,
-        form.name,
-        Utc::now()
-    )
-    .execute(&db_pool)
-    .await
-    {
-        Ok(_) => {
-            tracing::info!(
-                "request_id {} - Successfully inserted subscription into database.",
-                request_id
-            );
-            StatusCode::OK.into_response()
-        }
-        Err(e) => {
-            tracing::error!(
-                "request_id {} - Failed to execute query {:?}",
-                request_id,
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+    let connection = db_pool.get().expect("Failed to connect to the database.");
+    StatusCode::OK.into_response()
 }

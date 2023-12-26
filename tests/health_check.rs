@@ -1,12 +1,14 @@
-use sqlx::{Connection, Executor, PgConnection, PgPool};
-use std::fmt::Debug;
-use uuid::Uuid;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::{PgConnection, RunQueryDsl};
+use rand::{distributions::Alphanumeric, Rng};
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
+use zero2prod::schema::subscriptions;
 use zero2prod::startup::run;
 
 pub struct TestApp {
     pub address: String,
-    pub db_pool: PgPool,
+    pub db_pool: Pool<ConnectionManager<PgConnection>>,
 }
 
 async fn spawn_app() -> TestApp {
@@ -15,7 +17,7 @@ async fn spawn_app() -> TestApp {
     let address = format!("http://127.0.0.1:{}", port);
 
     let mut configuration = get_configuration().expect("Failed to read configuration.");
-    configuration.database.database_name = Uuid::new_v4().to_string();
+    configuration.database.database_name = String::from("newsletter");
     let connection_pool = configure_database(&configuration.database).await;
 
     let server = run(listener, connection_pool.clone()).expect("Failed to bind address");
@@ -27,28 +29,11 @@ async fn spawn_app() -> TestApp {
     }
 }
 
-async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    // Create database
-    let mut connection = PgConnection::connect(&config.connection_string_without_db())
-        .await
-        .expect("Failed to connect to Postgres.");
-
-    connection
-        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
-        .await
-        .expect("Failed to create database");
-
-    // Migrate database
-    let connection_pool = PgPool::connect(&config.connection_string())
-        .await
-        .expect("Failed to connect to Postgress");
-
-    sqlx::migrate!("./migrations")
-        .run(&connection_pool)
-        .await
-        .expect("Failed to migrate database");
-
-    connection_pool
+async fn configure_database(config: &DatabaseSettings) -> Pool<ConnectionManager<PgConnection>> {
+    let manager = ConnectionManager::<PgConnection>::new(config.connection_string());
+    Pool::builder()
+        .build(manager)
+        .expect("Failed to create pool.")
 }
 
 #[tokio::test]
@@ -57,8 +42,16 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     let app = spawn_app().await;
     let client = reqwest::Client::new();
 
+    let random_name: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(10)
+        .map(char::from)
+        .collect();
+    let random_email = format!("{}@example.com", random_name);
+
+    let body = format!("name={}&email={}", random_name, random_email);
+
     // Act
-    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
         .post(&format!("{}/subscriptions", &app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -70,13 +63,24 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     // Assert
     assert_eq!(200, response.status().as_u16());
 
-    let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
-        .fetch_one(&app.db_pool)
-        .await
+    let saved = subscriptions::table
+        .select((subscriptions::email, subscriptions::name))
+        .order(subscriptions::id.desc())
+        .first::<(String, String)>(&mut app.db_pool.get().unwrap())
+        .optional()
         .expect("Failed to fetch saved subscription.");
 
-    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
-    assert_eq!(saved.name, "le guin");
+    if let Some(saved) = saved {
+        let (email, name) = saved;
+        assert_eq!(email, random_email);
+        assert_eq!(name, random_name);
+    } else {
+        panic!("No subscription was found in the database.");
+    }
+
+    diesel::delete(subscriptions::table.filter(subscriptions::email.eq(random_email)))
+        .execute(&mut app.db_pool.get().unwrap())
+        .expect("Failed to delete subscription.");
 }
 
 #[tokio::test]

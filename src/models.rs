@@ -10,3 +10,11 @@ pub struct Subscription {
     pub name: String,
     pub subscribed_at: SystemTime,
 }
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::subscriptions)]
+pub struct NewSubscription<'a> {
+    pub email: &'a str,
+    pub name: &'a str,
+    pub subscribed_at: SystemTime,
+}

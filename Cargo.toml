@@ -26,6 +26,8 @@ env_logger = "0.10.1"
 tracing = { version = "0.1.40", features = ["log"]  }
 diesel = { version = "2.1.4", features = ["postgres", "postgres_backend", "r2d2"] }
 dotenvy = "0.15.7"
+chrono = "0.4.31"
+rand = { version = "0.8.5", features = [] }
 
 
 [dev-dependencies]

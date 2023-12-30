@@ -1,11 +1,13 @@
-use env_logger::Env;
 use sqlx::PgPool;
 use zero2prod::configuration::get_configuration;
 use zero2prod::startup::run;
 
+mod telemetry;
+
 #[tokio::main]
 async fn main() -> hyper::Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    let subscriber = telemetry::get_subscriber("zero2prod".into(), "info".into(), std::io::stdout);
+    telemetry::init_subscriber(subscriber);
 
     let configuration = get_configuration().expect("Failed to read configuration.");
     let db_pool = PgPool::connect(&configuration.database.connection_string())
